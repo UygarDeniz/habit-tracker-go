@@ -2,6 +2,7 @@ package main
 
 import (
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/joho/godotenv"
@@ -10,7 +11,6 @@ import (
 )
 
 func main() {
-	port := ":8080"
 
 	err := godotenv.Load()
 
@@ -28,8 +28,14 @@ func main() {
 
 	router := routes.SetupRoutes(application)
 
+	port := os.Getenv("PORT")
+
+	if port == "" {
+		port = "8080"
+	}
+
 	server := &http.Server{
-		Addr:         port,
+		Addr:         ":" + port,
 		Handler:      router,
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: 10 * time.Second,

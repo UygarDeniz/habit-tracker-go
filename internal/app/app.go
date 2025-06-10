@@ -6,7 +6,6 @@ import (
 	"log"
 	"os"
 
-	"github.com/go-playground/validator/v10"
 	"github.com/uygardeniz/habit-tracker/internal/handler"
 	"github.com/uygardeniz/habit-tracker/internal/repository"
 	"github.com/uygardeniz/habit-tracker/internal/usecases"
@@ -15,8 +14,7 @@ import (
 type Application struct {
 	Logger      *log.Logger
 	DB          *sql.DB
-	UserHandler *handler.UserHandler
-	Validate    *validator.Validate
+	AuthHandler *handler.AuthHandler
 }
 
 func NewApplication() (*Application, error) {
@@ -32,16 +30,16 @@ func NewApplication() (*Application, error) {
 	userRepository := repository.NewPostgresUserRepository(db)
 
 	// Initialize usecases
-	createUserUsecase := usecases.NewCreateUserUsecase(userRepository)
+	loginOrRegisterGoogleUserUsecase := usecases.NewLoginOrRegisterGoogleUserUsecase(userRepository)
 
-	v := validator.New()
 	// Initialize handlers
-	userHandler := handler.NewUserHandler(createUserUsecase, logger, v)
+
+	authHandler := handler.NewAuthHandler(logger, loginOrRegisterGoogleUserUsecase)
 
 	app := &Application{
 		Logger:      logger,
 		DB:          db,
-		UserHandler: userHandler,
+		AuthHandler: authHandler,
 	}
 
 	return app, nil

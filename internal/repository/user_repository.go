@@ -3,7 +3,6 @@ package repository
 import (
 	"context"
 	"database/sql"
-	"fmt"
 
 	"github.com/uygardeniz/habit-tracker/internal/apperrors"
 	"github.com/uygardeniz/habit-tracker/internal/entity"
@@ -11,7 +10,7 @@ import (
 
 type UserRepository interface {
 	Create(ctx context.Context, user *entity.User) error
-	FindByEmail(ctx context.Context, email string) (*entity.User, error)
+	FindByGoogleID(ctx context.Context, googleID string) (*entity.User, error)
 }
 
 type PostgresUserRepository struct {
@@ -23,12 +22,45 @@ func NewPostgresUserRepository(db *sql.DB) *PostgresUserRepository {
 }
 
 func (r *PostgresUserRepository) Create(ctx context.Context, user *entity.User) error {
-	fmt.Println("Creating user in Postgres with context")
+	query := `
+		INSERT INTO users (id, email, name, picture, google_id)
+		VALUES ($1, $2, $3, $4, $5)
+	`
+
+	_, err := r.db.ExecContext(ctx, query, user.ID, user.Email, user.Name, user.Picture, user.GoogleID)
+
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
-func (r *PostgresUserRepository) FindByEmail(ctx context.Context, email string) (*entity.User, error) {
-	fmt.Printf("Finding user by email in Postgres with context: %s\n", email)
+func (r *PostgresUserRepository) FindByGoogleID(ctx context.Context, googleID string) (*entity.User, error) {
+	query := `
+		SELECT id, email, name, picture, google_id
+		FROM users
+		WHERE google_id = $1
+	`
 
-	return nil, apperrors.ErrNotFound
+	row := r.db.QueryRowContext(ctx, query, googleID)
+
+	var foundUser entity.User
+
+	err := row.Scan(
+		&foundUser.ID,
+		&foundUser.Email,
+		&foundUser.Name,
+		&foundUser.Picture,
+		&foundUser.GoogleID,
+	)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, apperrors.ErrNotFound
+		}
+		return nil, err
+	}
+
+	return &foundUser, nil
 }
