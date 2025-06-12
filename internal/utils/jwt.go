@@ -8,6 +8,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
+// GenerateAccessToken generates a JWT access token for the given user ID
 func GenerateAccessToken(userID string) (string, error) {
 	secretKey := os.Getenv("JWT_SECRET")
 	if secretKey == "" {
@@ -31,6 +32,7 @@ func GenerateAccessToken(userID string) (string, error) {
 	return tokenString, nil
 }
 
+// GenerateRefreshToken generates a JWT refresh token for the given user ID
 func GenerateRefreshToken(userID string) (string, error) {
 	secretKey := os.Getenv("JWT_REFRESH_SECRET")
 
@@ -48,6 +50,7 @@ func GenerateRefreshToken(userID string) (string, error) {
 	return tokenString, nil
 }
 
+// ValidateToken validates a JWT token with the given secret
 func ValidateToken(tokenString, secret string) (*jwt.Token, error) {
 	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (any, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
