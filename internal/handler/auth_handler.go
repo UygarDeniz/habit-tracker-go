@@ -10,7 +10,8 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/uygardeniz/habit-tracker/internal/usecases"
+	"github.com/uygardeniz/habit-tracker/internal/dto"
+	userUsecase "github.com/uygardeniz/habit-tracker/internal/usecases/user"
 	"github.com/uygardeniz/habit-tracker/internal/utils"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
@@ -36,10 +37,10 @@ func getGoogleOauthConfig() *oauth2.Config {
 
 type AuthHandler struct {
 	logger                           *log.Logger
-	loginOrRegisterGoogleUserUsecase *usecases.LoginOrRegisterGoogleUserUsecase
+	loginOrRegisterGoogleUserUsecase *userUsecase.LoginOrRegisterGoogleUserUsecase
 }
 
-func NewAuthHandler(logger *log.Logger, loginOrRegisterGoogleUserUsecase *usecases.LoginOrRegisterGoogleUserUsecase) *AuthHandler {
+func NewAuthHandler(logger *log.Logger, loginOrRegisterGoogleUserUsecase *userUsecase.LoginOrRegisterGoogleUserUsecase) *AuthHandler {
 	return &AuthHandler{logger: logger, loginOrRegisterGoogleUserUsecase: loginOrRegisterGoogleUserUsecase}
 }
 
@@ -133,23 +134,20 @@ func (h *AuthHandler) HandleGoogleCallback(w http.ResponseWriter, r *http.Reques
 		SameSite: http.SameSiteLaxMode,
 	}
 	http.SetCookie(w, &cookie)
-	userData := struct {
-		ID      string `json:"id"`
-		Email   string `json:"email"`
-		Name    string `json:"name"`
-		Picture string `json:"picture"`
-	}{
-		ID:      user.ID,
-		Email:   user.Email,
-		Name:    user.Name,
-		Picture: user.Picture,
+
+	userData := dto.AuthResponse{
+		AccessToken: accessToken,
+		User: dto.UserData{
+			ID:      user.ID,
+			Email:   user.Email,
+			Name:    user.Name,
+			Picture: user.Picture,
+		},
+		Message: "authentication_successful",
 	}
 
-	utils.WriteJSON(w, http.StatusOK, utils.APIResponse{
-		"access_token": accessToken,
-		"user":         userData,
-		"message":      "authentication_successful",
-	}, h.logger)
+	h.logger.Printf("Authentication successful. UserID: %s", user.ID)
+	utils.WriteJSON(w, http.StatusOK, utils.APIResponse{"data": userData}, h.logger)
 }
 
 func (h *AuthHandler) HandleRefreshToken(w http.ResponseWriter, r *http.Request) {
