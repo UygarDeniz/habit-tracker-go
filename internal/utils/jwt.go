@@ -10,12 +10,12 @@ import (
 
 // GenerateAccessToken generates a JWT access token for the given user ID
 func GenerateAccessToken(userID string) (string, error) {
-	secretKey := os.Getenv("JWT_SECRET")
+	secretKey := os.Getenv("JWT_ACCESS_SECRET")
 	if secretKey == "" {
-		return "", errors.New("JWT_SECRET environment variable is not set")
+		return "", errors.New("JWT_ACCESS_SECRET environment variable is not set")
 	}
 	if len(secretKey) < 32 {
-		return "", errors.New("JWT_SECRET must be at least 32 characters")
+		return "", errors.New("JWT_ACCESS_SECRET must be at least 32 characters")
 	}
 
 	claims := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
