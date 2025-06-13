@@ -31,6 +31,7 @@ func WriteJSON(w http.ResponseWriter, statusCode int, data APIResponse, logger *
 	if err != nil {
 		logger.Printf("WriteJSON: failed to write jsonData to ResponseWriter: %v. Status code was: %d", err, statusCode)
 	}
+
 }
 
 type ValidationErrorResponse struct {
@@ -57,6 +58,12 @@ func WriteValidationErrorResponse(w http.ResponseWriter, _ int, initialData APIR
 				formattedErrors.Errors[i] = fmt.Sprintf("%s must be a valid email address", field)
 			case "url":
 				formattedErrors.Errors[i] = fmt.Sprintf("%s must be a valid URL", field)
+			case "oneof":
+				formattedErrors.Errors[i] = fmt.Sprintf("%s must be one of the following: %s", field, param)
+			case "hexcolor":
+				formattedErrors.Errors[i] = fmt.Sprintf("%s must be a valid hex color code", field)
+			case "json":
+				formattedErrors.Errors[i] = fmt.Sprintf("%s must be a valid JSON array", field)
 			default:
 				formattedErrors.Errors[i] = fmt.Sprintf("field %s: validation failed for rule '%s'", field, err.Tag())
 			}
