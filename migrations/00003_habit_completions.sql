@@ -1,9 +1,9 @@
 -- +goose Up
 -- +goose StatementBegin
 CREATE TABLE habit_completions (
-    id SERIAL PRIMARY KEY,
-    habit_id INTEGER NOT NULL REFERENCES habits(id) ON DELETE CASCADE,
-    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    id UUID PRIMARY KEY,
+    habit_id UUID NOT NULL REFERENCES habits(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     completed_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
     completion_date DATE NOT NULL DEFAULT CURRENT_DATE,
     count INTEGER NOT NULL DEFAULT 1,
