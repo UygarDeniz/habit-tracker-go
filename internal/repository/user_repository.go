@@ -11,6 +11,7 @@ import (
 type UserRepository interface {
 	Create(ctx context.Context, user *entity.User) error
 	FindByGoogleID(ctx context.Context, googleID string) (*entity.User, error)
+	FindByID(ctx context.Context, id string) (*entity.User, error)
 }
 
 type PostgresUserRepository struct {
@@ -44,6 +45,35 @@ func (r *PostgresUserRepository) FindByGoogleID(ctx context.Context, googleID st
 	`
 
 	row := r.db.QueryRowContext(ctx, query, googleID)
+
+	var foundUser entity.User
+
+	err := row.Scan(
+		&foundUser.ID,
+		&foundUser.Email,
+		&foundUser.Name,
+		&foundUser.Picture,
+		&foundUser.GoogleID,
+	)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, apperrors.ErrNotFound
+		}
+		return nil, err
+	}
+
+	return &foundUser, nil
+}
+
+func (r *PostgresUserRepository) FindByID(ctx context.Context, id string) (*entity.User, error) {
+	query := `
+		SELECT id, email, name, picture, google_id
+		FROM users
+		WHERE id = $1
+	`
+
+	row := r.db.QueryRowContext(ctx, query, id)
 
 	var foundUser entity.User
 

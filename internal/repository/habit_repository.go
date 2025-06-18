@@ -85,6 +85,7 @@ func (r *PostgresHabitRepository) FindByID(ctx context.Context, id string) (*ent
 	row := r.db.QueryRowContext(ctx, query, id)
 
 	var habit entity.Habit
+	var targetDaysBytes []byte
 
 	err := row.Scan(
 		&habit.ID,
@@ -96,7 +97,7 @@ func (r *PostgresHabitRepository) FindByID(ctx context.Context, id string) (*ent
 		&habit.Category,
 		&habit.Frequency,
 		&habit.TargetCount,
-		&habit.TargetDays,
+		&targetDaysBytes,
 		&habit.CurrentStreak,
 		&habit.BestStreak,
 		&habit.TotalCompletions,
@@ -110,6 +111,14 @@ func (r *PostgresHabitRepository) FindByID(ctx context.Context, id string) (*ent
 			return nil, apperrors.ErrNotFound
 		}
 		return nil, err
+	}
+
+	if targetDaysBytes != nil {
+		var targetDays entity.TargetDays
+		if err := json.Unmarshal(targetDaysBytes, &targetDays); err != nil {
+			return nil, err
+		}
+		habit.TargetDays = &targetDays
 	}
 
 	return &habit, nil
@@ -130,6 +139,7 @@ func (r *PostgresHabitRepository) FindByUserID(ctx context.Context, userID strin
 	var habits []*entity.Habit
 	for rows.Next() {
 		var habit entity.Habit
+		var targetDaysBytes []byte
 		err := rows.Scan(
 			&habit.ID,
 			&habit.UserID,
@@ -140,7 +150,7 @@ func (r *PostgresHabitRepository) FindByUserID(ctx context.Context, userID strin
 			&habit.Category,
 			&habit.Frequency,
 			&habit.TargetCount,
-			&habit.TargetDays,
+			&targetDaysBytes,
 			&habit.CurrentStreak,
 			&habit.BestStreak,
 			&habit.TotalCompletions,
@@ -151,6 +161,15 @@ func (r *PostgresHabitRepository) FindByUserID(ctx context.Context, userID strin
 		if err != nil {
 			return nil, err
 		}
+
+		if targetDaysBytes != nil {
+			var targetDays entity.TargetDays
+			if err := json.Unmarshal(targetDaysBytes, &targetDays); err != nil {
+				return nil, err
+			}
+			habit.TargetDays = &targetDays
+		}
+
 		habits = append(habits, &habit)
 	}
 
@@ -168,7 +187,16 @@ func (r *PostgresHabitRepository) Update(ctx context.Context, habit *entity.Habi
 		WHERE id = $14
 	`
 
-	result, err := r.db.ExecContext(ctx, query, habit.Name, habit.Description, habit.Motivation, habit.Color, habit.Category, habit.Frequency, habit.TargetCount, habit.TargetDays, habit.CurrentStreak, habit.BestStreak, habit.TotalCompletions, habit.IsActive, habit.UpdatedAt, habit.ID)
+	var targetDaysJSON []byte
+	var err error
+	if habit.TargetDays != nil {
+		targetDaysJSON, err = json.Marshal(habit.TargetDays)
+		if err != nil {
+			return err
+		}
+	}
+
+	result, err := r.db.ExecContext(ctx, query, habit.Name, habit.Description, habit.Motivation, habit.Color, habit.Category, habit.Frequency, habit.TargetCount, targetDaysJSON, habit.CurrentStreak, habit.BestStreak, habit.TotalCompletions, habit.IsActive, habit.UpdatedAt, habit.ID)
 
 	if err != nil {
 		return err

@@ -19,7 +19,7 @@ func NewCreateHabitUsecase(habitRepository repository.HabitRepository) *CreateHa
 }
 
 func (uc *CreateHabitUsecase) Execute(ctx context.Context, userID string, req dto.CreateHabitDTO) (*entity.Habit, error) {
-	targetDays, err := entity.ConvertTargetDaysFromJSON(req.TargetDays)
+	targetDays, err := dto.ConvertTargetDaysFromJSON(req.TargetDays)
 	if err != nil {
 		return nil, apperrors.ErrInvalidInput
 	}

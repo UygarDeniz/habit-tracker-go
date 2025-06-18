@@ -24,21 +24,29 @@ func NewAuthMiddleware(logger *log.Logger) *AuthMiddleware {
 // RequireAuth validates JWT token and sets user context
 func (m *AuthMiddleware) RequireAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var tokenString string
+		// First, check for Authorization header
 		authHeader := r.Header.Get("Authorization")
-		if authHeader == "" {
-			m.logger.Printf("Missing Authorization header")
-			utils.WriteJSON(w, http.StatusUnauthorized, utils.APIResponse{"error": "missing_authorization_header"}, m.logger)
-			return
+		if authHeader != "" {
+			parts := strings.Split(authHeader, " ")
+			if len(parts) == 2 && strings.ToLower(parts[0]) == "bearer" {
+				tokenString = parts[1]
+			}
 		}
 
-		tokenParts := strings.Split(authHeader, " ")
-		if len(tokenParts) != 2 || tokenParts[0] != "Bearer" {
-			m.logger.Printf("Invalid Authorization header format")
-			utils.WriteJSON(w, http.StatusUnauthorized, utils.APIResponse{"error": "invalid_authorization_format"}, m.logger)
-			return
+		// If token is not in the header, check for the cookie
+		if tokenString == "" {
+			cookie, err := r.Cookie("access_token")
+			if err == nil {
+				tokenString = cookie.Value
+			}
 		}
 
-		tokenString := tokenParts[1]
+		if tokenString == "" {
+			m.logger.Println("Authorization token not found")
+			utils.WriteJSON(w, http.StatusUnauthorized, utils.APIResponse{"error": "unauthorized"}, m.logger)
+			return
+		}
 
 		token, err := utils.ValidateToken(tokenString, os.Getenv("JWT_ACCESS_SECRET"))
 		if err != nil || !token.Valid {

@@ -1,7 +1,6 @@
 package entity
 
 import (
-	"encoding/json"
 	"errors"
 	"slices"
 	"strings"
@@ -11,7 +10,7 @@ import (
 // TargetDays represents the days when a habit should be performed
 type TargetDays struct {
 	// For weekly habits: ["monday", "wednesday", "friday"]
-	// For monthly habits: [1, 15] (days of month)
+	// For monthly habits: [1, 15] (days of month) or ["last"] for last day of month
 	Days []any `json:"days"`
 }
 
@@ -89,7 +88,7 @@ func (h *Habit) SetCategory(category string) {
 func (h *Habit) SetTargetDays(days *TargetDays) error {
 	if days != nil {
 		if err := validateTargetDays(h.Frequency, days); err != nil {
-			return errors.New("invalid target days")
+			return err
 		}
 	}
 	h.TargetDays = days
@@ -119,14 +118,10 @@ func (h *Habit) Activate() {
 	h.IsActive = true
 }
 
+var validFrequencies = []string{"daily", "weekly", "monthly"}
+
 func isValidFrequency(frequency string) bool {
-	validFrequencies := []string{"daily", "weekly", "monthly", "custom"}
-	for _, valid := range validFrequencies {
-		if frequency == valid {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(validFrequencies, frequency)
 }
 
 func isValidColor(color string) bool {
@@ -144,7 +139,6 @@ func validateTargetDays(frequency string, days *TargetDays) error {
 	case "daily":
 		return nil
 	case "weekly":
-
 		for _, day := range days.Days {
 			dayStr, ok := day.(string)
 			if !ok || !slices.Contains(validDays, dayStr) {
@@ -153,9 +147,24 @@ func validateTargetDays(frequency string, days *TargetDays) error {
 		}
 	case "monthly":
 		for _, day := range days.Days {
+			// Handle special case for "last" day of month
+			if dayStr, ok := day.(string); ok {
+				if dayStr == "last" {
+					continue // "last" is valid for last day of any month
+				}
+				return errors.New("invalid month day: only numeric days (1-28) or 'last' are allowed")
+			}
+
+			// Handle numeric days
 			dayNum, ok := day.(float64)
-			if !ok || dayNum < 1 || dayNum > 31 {
-				return errors.New("invalid month day")
+			dayInt := int(dayNum)
+			if !ok || float64(dayInt) != dayNum {
+				return errors.New("invalid month day: must be a number between 1-28 or 'last'")
+			}
+
+			// Restrict to days 1-28 to ensure they exist in all months
+			if dayInt < 1 || dayInt > 28 {
+				return errors.New("invalid month day: must be between 1-28 (to ensure availability in all months) or use 'last' for the last day of month")
 			}
 		}
 	default:
@@ -191,34 +200,37 @@ func Validate(habit *Habit) error {
 	return nil
 }
 
-// ConvertTargetDaysFromJSON converts JSON string to TargetDays entity
-func ConvertTargetDaysFromJSON(targetDaysJSON *string) (*TargetDays, error) {
-	if targetDaysJSON == nil || *targetDaysJSON == "" {
-		return nil, nil
+// GetValidMonthlyDays returns the actual days for a given month/year, handling edge cases
+func (td *TargetDays) GetValidMonthlyDays(year int, month time.Month) []int {
+	if td == nil {
+		return nil
 	}
 
-	var targetDaysData struct {
-		Days []any `json:"days"`
+	var validDays []int
+	daysInMonth := time.Date(year, month+1, 0, 0, 0, 0, 0, time.UTC).Day()
+
+	for _, day := range td.Days {
+		if dayStr, ok := day.(string); ok && dayStr == "last" {
+			validDays = append(validDays, daysInMonth)
+		} else if dayNum, ok := day.(float64); ok {
+			dayInt := int(dayNum)
+			if dayInt <= daysInMonth {
+				validDays = append(validDays, dayInt)
+			}
+			// If the target day doesn't exist in this month, skip it
+			// This prevents issues with habits set for day 31 in February
+		}
 	}
 
-	if err := json.Unmarshal([]byte(*targetDaysJSON), &targetDaysData); err != nil {
-		return nil, errors.New("invalid target days JSON format")
-	}
-
-	return &TargetDays{Days: targetDaysData.Days}, nil
+	return validDays
 }
 
-// ConvertTargetDaysToJSON converts TargetDays entity to JSON string
-func ConvertTargetDaysToJSON(targetDays *TargetDays) (*string, error) {
-	if targetDays == nil {
-		return nil, nil
+// IsValidForMonth checks if the target days are valid for a specific month
+func (td *TargetDays) IsValidForMonth(year int, month time.Month) bool {
+	if td == nil {
+		return true
 	}
 
-	targetDaysJSON, err := json.Marshal(targetDays)
-	if err != nil {
-		return nil, errors.New("failed to marshal target days")
-	}
-
-	targetDaysStr := string(targetDaysJSON)
-	return &targetDaysStr, nil
+	validDays := td.GetValidMonthlyDays(year, month)
+	return len(validDays) > 0 // At least one day should be valid
 }

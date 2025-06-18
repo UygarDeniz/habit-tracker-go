@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -10,53 +11,42 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/uygardeniz/habit-tracker/internal/dto"
+	"github.com/uygardeniz/habit-tracker/internal/config"
+	authUsecase "github.com/uygardeniz/habit-tracker/internal/usecases/auth"
 	userUsecase "github.com/uygardeniz/habit-tracker/internal/usecases/user"
 	"github.com/uygardeniz/habit-tracker/internal/utils"
-	"golang.org/x/oauth2"
-	"golang.org/x/oauth2/google"
 )
 
 var (
-	googleOauthConfig *oauth2.Config
+	frontendURL       = config.GetFrontendURL()
+	googleOauthConfig = config.GetGoogleOauthConfig()
 	oauthStateString  = "random"
 )
 
-func getGoogleOauthConfig() *oauth2.Config {
-	if googleOauthConfig == nil {
-		googleOauthConfig = &oauth2.Config{
-			RedirectURL:  os.Getenv("GOOGLE_OAUTH_REDIRECT_URL"),
-			ClientID:     os.Getenv("GOOGLE_OAUTH_CLIENT_ID"),
-			ClientSecret: os.Getenv("GOOGLE_OAUTH_CLIENT_SECRET"),
-			Scopes:       []string{"https://www.googleapis.com/auth/userinfo.email", "https://www.googleapis.com/auth/userinfo.profile"},
-			Endpoint:     google.Endpoint,
-		}
-	}
-	return googleOauthConfig
-}
-
 type AuthHandler struct {
 	logger                           *log.Logger
-	loginOrRegisterGoogleUserUsecase *userUsecase.LoginOrRegisterGoogleUserUsecase
+	loginOrRegisterGoogleUserUsecase *authUsecase.LoginOrRegisterGoogleUserUsecase
+	getUserByIDUsecase               *userUsecase.GetUserByIDUsecase
 }
 
-func NewAuthHandler(logger *log.Logger, loginOrRegisterGoogleUserUsecase *userUsecase.LoginOrRegisterGoogleUserUsecase) *AuthHandler {
-	return &AuthHandler{logger: logger, loginOrRegisterGoogleUserUsecase: loginOrRegisterGoogleUserUsecase}
+func NewAuthHandler(logger *log.Logger, loginOrRegisterGoogleUserUsecase *authUsecase.LoginOrRegisterGoogleUserUsecase, getUserByIDUsecase *userUsecase.GetUserByIDUsecase) *AuthHandler {
+	return &AuthHandler{
+		logger:                           logger,
+		loginOrRegisterGoogleUserUsecase: loginOrRegisterGoogleUserUsecase,
+		getUserByIDUsecase:               getUserByIDUsecase,
+	}
 }
 
 func (h *AuthHandler) HandleGoogleLogin(w http.ResponseWriter, r *http.Request) {
-	config := getGoogleOauthConfig()
-	url := config.AuthCodeURL(oauthStateString)
+	url := googleOauthConfig.AuthCodeURL(oauthStateString)
 	http.Redirect(w, r, url, http.StatusTemporaryRedirect)
 }
 
 func (h *AuthHandler) HandleGoogleCallback(w http.ResponseWriter, r *http.Request) {
-	config := getGoogleOauthConfig()
-
 	state := r.FormValue("state")
 	if state != oauthStateString {
 		h.logger.Printf("invalid oauth state, expected '%s', got '%s'\n", oauthStateString, state)
-		utils.WriteJSON(w, http.StatusBadRequest, utils.APIResponse{"error": "invalid_oauth_state"}, h.logger)
+		http.Redirect(w, r, frontendURL, http.StatusTemporaryRedirect)
 		return
 	}
 
@@ -67,7 +57,7 @@ func (h *AuthHandler) HandleGoogleCallback(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	token, err := config.Exchange(context.Background(), code)
+	token, err := googleOauthConfig.Exchange(context.Background(), code)
 	if err != nil {
 		h.logger.Printf("code exchange failed with '%s'\n", err)
 		utils.WriteJSON(w, http.StatusBadRequest, utils.APIResponse{"error": "code_exchange_failed"}, h.logger)
@@ -99,55 +89,37 @@ func (h *AuthHandler) HandleGoogleCallback(w http.ResponseWriter, r *http.Reques
 	err = json.Unmarshal(contents, &userInfo)
 	if err != nil {
 		h.logger.Printf("failed to unmarshal user info: %s\n", err.Error())
-		utils.WriteJSON(w, http.StatusInternalServerError, utils.APIResponse{"error": "failed_to_parse_user_info"}, h.logger)
+		http.Redirect(w, r, fmt.Sprintf("%s/auth?auth_error=Internal server error", frontendURL), http.StatusTemporaryRedirect)
 		return
 	}
 
 	user, err := h.loginOrRegisterGoogleUserUsecase.Execute(r.Context(), userInfo.ID, userInfo.Email, userInfo.Name, userInfo.Picture)
 	if err != nil {
 		h.logger.Printf("failed to login or register user: %s\n", err.Error())
-		utils.WriteJSON(w, http.StatusInternalServerError, utils.APIResponse{"error": "failed_to_process_user"}, h.logger)
-		return
-	}
-
-	accessToken, err := utils.GenerateAccessToken(user.ID)
-	if err != nil {
-		h.logger.Printf("failed to generate access token: %s\n", err.Error())
-		utils.WriteJSON(w, http.StatusInternalServerError, utils.APIResponse{"error": "failed_to_generate_access_token"}, h.logger)
+		http.Redirect(w, r, fmt.Sprintf("%s/auth?auth_error=Internal server error", frontendURL), http.StatusTemporaryRedirect)
 		return
 	}
 
 	refreshToken, err := utils.GenerateRefreshToken(user.ID)
 	if err != nil {
 		h.logger.Printf("failed to generate refresh token: %s\n", err.Error())
-		utils.WriteJSON(w, http.StatusInternalServerError, utils.APIResponse{"error": "failed_to_generate_refresh_token"}, h.logger)
+		http.Redirect(w, r, fmt.Sprintf("%s/auth?auth_error=Internal server error", frontendURL), http.StatusTemporaryRedirect)
 		return
 	}
 
-	cookie := http.Cookie{
+	refreshTokenCookie := http.Cookie{
 		Name:     "refresh_token",
 		Value:    refreshToken,
 		Expires:  time.Now().Add(24 * 7 * time.Hour),
 		HttpOnly: true,
-		Secure:   false,
+		Secure:   r.TLS != nil,
 		Path:     "/api/auth",
 		SameSite: http.SameSiteLaxMode,
 	}
-	http.SetCookie(w, &cookie)
+	http.SetCookie(w, &refreshTokenCookie)
 
-	userData := dto.AuthResponse{
-		AccessToken: accessToken,
-		User: dto.UserData{
-			ID:      user.ID,
-			Email:   user.Email,
-			Name:    user.Name,
-			Picture: user.Picture,
-		},
-		Message: "authentication_successful",
-	}
-
-	h.logger.Printf("Authentication successful. UserID: %s", user.ID)
-	utils.WriteJSON(w, http.StatusOK, utils.APIResponse{"data": userData}, h.logger)
+	h.logger.Printf("Authentication successful. UserID: %s. Redirecting to frontend.", user.ID)
+	http.Redirect(w, r, frontendURL, http.StatusTemporaryRedirect)
 }
 
 func (h *AuthHandler) HandleRefreshToken(w http.ResponseWriter, r *http.Request) {
@@ -182,17 +154,73 @@ func (h *AuthHandler) HandleRefreshToken(w http.ResponseWriter, r *http.Request)
 }
 
 func (h *AuthHandler) HandleLogout(w http.ResponseWriter, r *http.Request) {
-	// Clear refresh token cookie
+
 	cookie := http.Cookie{
-		Name:     "refresh_token",
+		Name: "refresh_token",
+
 		Value:    "",
 		Expires:  time.Unix(0, 0),
 		HttpOnly: true,
-		Secure:   false, // Set to false for localhost development
+		Secure:   false,
 		Path:     "/api/auth",
 		SameSite: http.SameSiteLaxMode,
 	}
 	http.SetCookie(w, &cookie)
 
 	utils.WriteJSON(w, http.StatusOK, utils.APIResponse{"message": "logged out successfully"}, h.logger)
+}
+
+func (h *AuthHandler) HandleGetUserAndAccessToken(w http.ResponseWriter, r *http.Request) {
+	cookie, err := r.Cookie("refresh_token")
+	if err != nil {
+		utils.WriteJSON(w, http.StatusUnauthorized, utils.APIResponse{"error": "refresh token not found"}, h.logger)
+		return
+	}
+
+	refreshTokenString := cookie.Value
+	refreshToken, err := utils.ValidateToken(refreshTokenString, os.Getenv("JWT_REFRESH_SECRET"))
+	if err != nil || !refreshToken.Valid {
+		utils.WriteJSON(w, http.StatusUnauthorized, utils.APIResponse{"error": "invalid refresh token"}, h.logger)
+		return
+	}
+
+	claims, ok := refreshToken.Claims.(jwt.MapClaims)
+	if !ok {
+		utils.WriteJSON(w, http.StatusInternalServerError, utils.APIResponse{"error": "failed to parse token claims"}, h.logger)
+		return
+	}
+
+	userID := claims["sub"].(string)
+
+	user, err := h.getUserByIDUsecase.Execute(r.Context(), userID)
+	if err != nil {
+		utils.WriteJSON(w, http.StatusInternalServerError, utils.APIResponse{"error": "failed to get user"}, h.logger)
+		return
+	}
+
+	accessToken, err := utils.GenerateAccessToken(userID)
+	if err != nil {
+		utils.WriteJSON(w, http.StatusInternalServerError, utils.APIResponse{"error": "failed to generate access token"}, h.logger)
+		return
+	}
+
+	newRefreshToken, err := utils.GenerateRefreshToken(userID)
+
+	if err != nil {
+		utils.WriteJSON(w, http.StatusInternalServerError, utils.APIResponse{"error": "failed to generate refresh token"}, h.logger)
+		return
+	}
+
+	refreshTokenCookie := http.Cookie{
+		Name:     "refresh_token",
+		Value:    newRefreshToken,
+		Expires:  time.Now().Add(24 * 7 * time.Hour),
+		HttpOnly: true,
+		Secure:   r.TLS != nil,
+		Path:     "/api/auth",
+		SameSite: http.SameSiteLaxMode,
+	}
+	http.SetCookie(w, &refreshTokenCookie)
+
+	utils.WriteJSON(w, http.StatusOK, utils.APIResponse{"user": user, "access_token": accessToken}, h.logger)
 }
