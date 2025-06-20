@@ -1,7 +1,6 @@
 package config
 
 import (
-	"log"
 	"os"
 
 	"golang.org/x/oauth2"
@@ -19,10 +18,6 @@ func GetGoogleOauthConfig() *oauth2.Config {
 			ClientID:     os.Getenv("GOOGLE_OAUTH_CLIENT_ID"),
 			ClientSecret: os.Getenv("GOOGLE_OAUTH_CLIENT_SECRET"),
 		}
-	}
-
-	if googleOauthConfig.RedirectURL == "" || googleOauthConfig.ClientID == "" || googleOauthConfig.ClientSecret == "" {
-		log.Fatal("Missing environment variables for Google OAuth")
 	}
 
 	return googleOauthConfig
