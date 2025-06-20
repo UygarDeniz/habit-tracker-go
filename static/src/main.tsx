@@ -1,4 +1,4 @@
-import { StrictMode, useEffect } from 'react'
+import { StrictMode } from 'react'
 import ReactDOM from 'react-dom/client'
 import { RouterProvider, createRouter } from '@tanstack/react-router'
 
@@ -11,7 +11,7 @@ import './styles.css'
 import reportWebVitals from './reportWebVitals.ts'
 
 import { UserProvider, useUser } from './contexts/UserContext.tsx'
-import type { UserContextType } from './contexts/UserContext.tsx'
+
 // Create a new router instance
 const router = createRouter({
   routeTree,
@@ -34,11 +34,11 @@ declare module '@tanstack/react-router' {
 
 function InnerApp() {
   const user = useUser()
-  
+
   if (user.isLoading) {
     return null
   }
-  
+
   return <RouterProvider router={router} context={{ user }} />
 }
 
